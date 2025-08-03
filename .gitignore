@@ -1,0 +1,11 @@
+# Node
+node_modules/
+dist/
+.env
+
+# React
+/frontend/node_modules/
+/frontend/build/
+
+# Misc
+.DS_Store
