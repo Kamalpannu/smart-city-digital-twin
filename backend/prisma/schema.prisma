@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AutomationRule {
+  id               Int       @id @default(autoincrement())
+  name             String
+  zone             String?
+  trafficThreshold Float?    @map("traffic_threshold")
+  enabled          Boolean?  @default(true)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("automation_rules")
+}
+
+model LatestState {
+  zone             String    @id
+  traffic          Float?
+  pollution        Float?
+  timestamp        BigInt?
+  predictedTraffic Float?    @map("predicted_traffic")
+  rerouteSuggested Boolean?  @map("reroute_suggested")
+  updatedAt        DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("latest_state")
+}
+
+model SensorReading {
+  id        Int      @default(autoincrement())
+  zone      String
+  traffic   Float
+  pollution Float
+  timestamp BigInt
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  time      DateTime @default(now()) @db.Timestamp(6)
+
+  @@id([id, time])
+  @@index([time(sort: Desc)])
+  @@map("sensor_readings")
+}

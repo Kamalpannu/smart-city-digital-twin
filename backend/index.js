@@ -1,26 +1,39 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const { PrismaClient } = require("@prisma/client");
+const { Pool } = require("pg");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// keep latest readings and recent history per zone
-const latest = {};
-const history = {}; // { zone: [traffic1, traffic2, ...] }
+const prisma = new PrismaClient();
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-const HISTORY_LENGTH = 5; // how many past points to average
-const REROUTE_THRESHOLD = 0.8; // predicted traffic above this triggers suggestion
+// Constants
+const HISTORY_WINDOW = 5;
+const DEFAULT_REROUTE_THRESHOLD = 0.8;
 
-function computePrediction(zone) {
-  const h = history[zone] || [];
-  if (h.length === 0) return null;
-  // simple moving average of last N traffic values
-  const sum = h.reduce((acc, v) => acc + v, 0);
-  return sum / h.length;
+// Prediction based on moving average of last N traffic readings (using time dimension)
+async function computePrediction(zone) {
+  const res = await pgPool.query(
+    `
+    SELECT traffic FROM sensor_readings
+    WHERE zone = $1
+    ORDER BY time DESC
+    LIMIT $2
+    `,
+    [zone, HISTORY_WINDOW]
+  );
+  if (res.rows.length === 0) return null;
+  const sum = res.rows.reduce((acc, row) => acc + row.traffic, 0);
+  return sum / res.rows.length;
 }
 
-app.post("/ingest", function (req, res) {
+app.post("/ingest", async (req, res) => {
   const data = req.body;
   if (
     typeof data.traffic !== "number" ||
@@ -31,36 +44,76 @@ app.post("/ingest", function (req, res) {
     return;
   }
 
-  // maintain history
-  if (!history[data.zone]) history[data.zone] = [];
-  history[data.zone].push(data.traffic);
-  if (history[data.zone].length > HISTORY_LENGTH) {
-    history[data.zone].shift(); // keep latest N
+  try {
+    // 1. Persist raw time-series reading; created_at has default, time has default
+    await pgPool.query(
+      `
+      INSERT INTO sensor_readings (zone, traffic, pollution, timestamp)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [data.zone, data.traffic, data.pollution, data.timestamp]
+    );
+
+    // 2. Compute prediction (moving average)
+    const predicted = await computePrediction(data.zone);
+
+    // 3. Decide reroute suggestion
+    const rerouteSuggested =
+      predicted !== null && predicted > DEFAULT_REROUTE_THRESHOLD;
+
+    // 4. Upsert snapshot into latest_state
+    await prisma.latestState.upsert({
+      where: { zone: data.zone },
+      update: {
+        traffic: data.traffic,
+        pollution: data.pollution,
+        timestamp: data.timestamp,
+        predictedTraffic: predicted,
+        rerouteSuggested: rerouteSuggested,
+        updatedAt: new Date(),
+      },
+      create: {
+        zone: data.zone,
+        traffic: data.traffic,
+        pollution: data.pollution,
+        timestamp: data.timestamp,
+        predictedTraffic: predicted,
+        rerouteSuggested: rerouteSuggested,
+      },
+    });
+
+    res.status(200).send({ status: "ok" });
+  } catch (err) {
+    console.error("Ingest error:", err);
+    res.status(500).send({ error: "Server error" });
   }
-
-  // compute predicted traffic
-  const predicted = computePrediction(data.zone);
-
-  // decide reroute suggestion
-  const rerouteSuggested =
-    predicted !== null && predicted > REROUTE_THRESHOLD;
-
-  latest[data.zone] = {
-    traffic: data.traffic,
-    pollution: data.pollution,
-    timestamp: data.timestamp,
-    predictedTraffic: predicted,
-    rerouteSuggested: rerouteSuggested,
-  };
-
-  res.status(200).send({ status: "ok" });
 });
 
-app.get("/latest", function (req, res) {
-  res.send(latest);
+app.get("/latest", async (req, res) => {
+  try {
+    const states = await prisma.latestState.findMany();
+    const result = {};
+    states.forEach((s) => {
+      result[s.zone] = {
+        traffic: s.traffic,
+        pollution: s.pollution,
+        // convert BigInt to number for JSON
+        timestamp:
+          s.timestamp !== null && s.timestamp !== undefined
+            ? Number(s.timestamp)
+            : null,
+        predictedTraffic: s.predictedTraffic,
+        rerouteSuggested: s.rerouteSuggested,
+      };
+    });
+    res.send(result);
+  } catch (err) {
+    console.error("Fetch latest error:", err);
+    res.status(500).send({ error: "Server error" });
+  }
 });
 
 const PORT = 4000;
-app.listen(PORT, function () {
+app.listen(PORT, () => {
   console.log("Backend listening on port", PORT);
 });
