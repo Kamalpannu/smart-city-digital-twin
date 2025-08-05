@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(cors());
@@ -19,6 +20,7 @@ const DEFAULT_REROUTE_THRESHOLD = 0.8;
 
 // Prediction based on moving average of last N traffic readings (using time dimension)
 async function computePrediction(zone) {
+  // Get recent traffic from DB (same as before)
   const res = await pgPool.query(
     `
     SELECT traffic FROM sensor_readings
@@ -28,9 +30,25 @@ async function computePrediction(zone) {
     `,
     [zone, HISTORY_WINDOW]
   );
-  if (res.rows.length === 0) return null;
-  const sum = res.rows.reduce((acc, row) => acc + row.traffic, 0);
-  return sum / res.rows.length;
+
+  const recentTraffic = res.rows.map(r => r.traffic);
+
+  const response = await fetch("http://localhost:5000/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      zone,
+      recent_traffic: recentTraffic,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error("AI service error", await response.text());
+    return null;
+  }
+
+  const data = await response.json();
+  return data.predicted_traffic;
 }
 
 app.post("/ingest", async (req, res) => {
@@ -45,7 +63,6 @@ app.post("/ingest", async (req, res) => {
   }
 
   try {
-    // 1. Persist raw time-series reading; created_at has default, time has default
     await pgPool.query(
       `
       INSERT INTO sensor_readings (zone, traffic, pollution, timestamp)
@@ -53,15 +70,10 @@ app.post("/ingest", async (req, res) => {
       `,
       [data.zone, data.traffic, data.pollution, data.timestamp]
     );
-
-    // 2. Compute prediction (moving average)
     const predicted = await computePrediction(data.zone);
-
-    // 3. Decide reroute suggestion
     const rerouteSuggested =
       predicted !== null && predicted > DEFAULT_REROUTE_THRESHOLD;
 
-    // 4. Upsert snapshot into latest_state
     await prisma.latestState.upsert({
       where: { zone: data.zone },
       update: {
@@ -112,6 +124,73 @@ app.get("/latest", async (req, res) => {
     res.status(500).send({ error: "Server error" });
   }
 });
+
+// Get all automation rules
+app.get("/automation-rules", async (req, res) => {
+  try {
+    const rules = await prisma.automationRule.findMany();
+    res.json(rules);
+  } catch (err) {
+    console.error("Fetch automation rules error:", err);
+    res.status(500).send({ error: "Server error" });
+  }
+});
+
+// Create a new automation rule
+app.post("/automation-rules", async (req, res) => {
+  const { name, zone, trafficThreshold, enabled } = req.body;
+
+  if (!name) {
+    res.status(400).send({ error: "Name is required" });
+    return;
+  }
+
+  try {
+    const newRule = await prisma.automationRule.create({
+      data: {
+        name,
+        zone,
+        trafficThreshold,
+        enabled: enabled === undefined ? true : enabled,
+      },
+    });
+    res.status(201).json(newRule);
+  } catch (err) {
+    console.error("Create automation rule error:", err);
+    res.status(500).send({ error: "Server error" });
+  }
+});
+
+// Update an existing automation rule
+app.put("/automation-rules/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, zone, trafficThreshold, enabled } = req.body;
+
+  try {
+    const updatedRule = await prisma.automationRule.update({
+      where: { id },
+      data: { name, zone, trafficThreshold, enabled },
+    });
+    res.json(updatedRule);
+  } catch (err) {
+    console.error("Update automation rule error:", err);
+    res.status(500).send({ error: "Server error" });
+  }
+});
+
+// Delete an automation rule
+app.delete("/automation-rules/:id", async (req, res) => {
+  const id = Number(req.params.id);
+
+  try {
+    await prisma.automationRule.delete({ where: { id } });
+    res.status(204).send();
+  } catch (err) {
+    console.error("Delete automation rule error:", err);
+    res.status(500).send({ error: "Server error" });
+  }
+});
+
 
 const PORT = 4000;
 app.listen(PORT, () => {
