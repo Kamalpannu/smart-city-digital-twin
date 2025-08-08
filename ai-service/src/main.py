@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import os
 
+# Load model
 current_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(current_dir, "..", "model.joblib")
 encoder_path = os.path.join(current_dir, "..", "encoder.joblib")
@@ -24,11 +25,8 @@ class PredictionResponse(BaseModel):
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(data: PredictionRequest):
     zone_encoded = encoder.transform([[data.zone]])
-    
     input_data = np.hstack([zone_encoded, [[data.pollution]]])
-
     prediction = model.predict(input_data)[0]
-
     reroute = prediction > 0.8
 
     return PredictionResponse(
