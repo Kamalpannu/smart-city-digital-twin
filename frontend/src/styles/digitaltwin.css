@@ -1,0 +1,62 @@
+.dtw-container {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  color: #111827;
+  background: #f9fafb;
+}
+.dtw-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.dtw-main {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr;
+  gap: 16px;
+  padding: 16px;
+}
+.dtw-hero {
+  background: #111827;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 380px;
+  grid-column: 1 / 2;
+}
+.dtw-charts {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, auto));
+  gap: 12px;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+.dtw-side {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+.dtw-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .dtw-main {
+    grid-template-columns: 1.8fr 1fr;
+  }
+  .dtw-side {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .dtw-main {
+    grid-template-columns: 1fr;
+  }
+  .dtw-side {
+    grid-template-columns: 1fr;
+  }
+}

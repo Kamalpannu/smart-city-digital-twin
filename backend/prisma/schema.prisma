@@ -22,7 +22,7 @@ model LatestState {
   zone             String    @id
   traffic          Float?
   pollution        Float?
-  timestamp        BigInt?
+  timestamp        DateTime? @db.Timestamptz(6)    // changed from BigInt
   predictedTraffic Float?    @map("predicted_traffic")
   rerouteSuggested Boolean?  @map("reroute_suggested")
   updatedAt        DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -35,11 +35,9 @@ model SensorReading {
   zone      String
   traffic   Float
   pollution Float
-  timestamp BigInt
-  createdAt DateTime @map("created_at") @db.Timestamptz(6)
-  time      DateTime @default(now()) @db.Timestamp(6)
+  timestamp DateTime @db.Timestamptz(6)
 
-  @@id([id, time])
-  @@index([time(sort: Desc)])
+  @@id([id, timestamp])
+  @@index([timestamp(sort: Desc)])
   @@map("sensor_readings")
 }
