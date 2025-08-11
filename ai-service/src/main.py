@@ -33,3 +33,7 @@ async def predict(data: PredictionRequest):
         predicted_traffic=round(float(prediction), 3),
         reroute_suggested=reroute
     )
+
+@app.get("/")
+async def root():
+    return {"message": "AI Service is running!"}

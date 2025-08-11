@@ -11,7 +11,6 @@ import {
 import dayjs from "dayjs";
 import { useSensorsStore } from "../../store/useSensorsStore";
 
-// Demo energy metric derived from traffic (replace with real energy feed if available)
 export default function EnergyChart() {
   const history = useSensorsStore((s) => s.history);
 

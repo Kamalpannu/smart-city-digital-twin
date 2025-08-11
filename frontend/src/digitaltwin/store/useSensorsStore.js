@@ -9,8 +9,8 @@ const POLL_MS =
   5000;
 
 export const useSensorsStore = create((set, get) => ({
-  latest: [],         // latest array of zones
-  history: [],        // [{ timestamp, zones: [...] }]
+  latest: [],
+  history: [],        
   loading: false,
   error: null,
   _intervalId: null,
@@ -37,7 +37,7 @@ export const useSensorsStore = create((set, get) => ({
   startPolling: () => {
     const { _intervalId, refreshLatest } = get();
     if (_intervalId) return;
-    refreshLatest(); // immediate first fetch
+    refreshLatest();
     const id = setInterval(refreshLatest, POLL_MS);
     set({ _intervalId: id });
   },
