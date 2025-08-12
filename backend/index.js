@@ -3,9 +3,10 @@ const express = require("express");
 const cors = require("cors");
 const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
-//const fetch = require("node-fetch"); // make sure node-fetch is installed
+//const fetch = require("node-fetch");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -13,18 +14,24 @@ const prisma = new PrismaClient();
 const pgPool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const DEFAULT_REROUTE_THRESHOLD = 0.8;
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+
+// Health check route
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
 
 // AI Service prediction call
 async function computePrediction(zone, pollution) {
   try {
-    const response = await fetch("http://localhost:5000/predict", {
+    const response = await fetch(`${AI_SERVICE_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ zone, pollution }),
     });
 
     if (!response.ok) {
-      console.error("AI service error", await response.text());
+      console.error("AI service error:", await response.text());
       return null;
     }
 
@@ -110,7 +117,7 @@ app.get("/latest", async (req, res) => {
   }
 });
 
-// === Automation Rules CRUD routes ===
+// Automation Rules CRUD
 
 // Get all automation rules
 app.get("/automation-rules", async (req, res) => {
@@ -165,8 +172,4 @@ app.delete("/automation-rules/:id", async (req, res) => {
   }
 });
 
-// Start server
-const PORT = 4000;
-app.listen(PORT, () => {
-  console.log(`Backend listening on port ${PORT}`);
-});
+module.exports = app;

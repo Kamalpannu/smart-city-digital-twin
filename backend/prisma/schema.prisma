@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -36,6 +37,8 @@ model SensorReading {
   traffic   Float
   pollution Float
   timestamp DateTime @db.Timestamptz(6)
+  source    String?  @default("simulated")
+  status    String?
 
   @@id([id, timestamp])
   @@index([timestamp(sort: Desc)])

@@ -1,0 +1,46 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-smartcity}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    depends_on:
+      - postgres
+      - ai-service
+    environment:
+      DATABASE_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB
+      AI_SERVICE_URL: http://ai-service:8000
+      PORT: 4000  
+      # other envs...
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend:/app
+    command: ["node","server.js"]
+
+  ai-service:
+    build: ./ai-service
+    volumes:
+      - ./ai-service:/app
+    ports:
+      - "8000:8000"
+
+  simulator:
+    build: ./simulator
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:4000
+    command: ["node","index.js"]
+
+volumes:
+  pgdata:
