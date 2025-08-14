@@ -29,6 +29,8 @@ services:
 
   ai-service:
     build: ./ai-service
+    environment:
+      OPENAI_API_KEY: your_openai_api_key_here
     volumes:
       - ./ai-service:/app
     ports:

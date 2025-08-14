@@ -3,111 +3,231 @@ const express = require("express");
 const cors = require("cors");
 const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
-//const fetch = require("node-fetch");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
 const prisma = new PrismaClient();
-const pgPool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pgPool = new (require("pg").Pool)({ connectionString: process.env.DATABASE_URL });
 
-const DEFAULT_REROUTE_THRESHOLD = 0.8;
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const PORT = parseInt(process.env.PORT || "4000", 10);
 
-// Health check route
-app.get("/health", (req, res) => {
+const zoneCoords = {
+  A: { lat: 49.2827, lon: -123.1207 },
+  B: { lat: 49.2463, lon: -123.1162 },
+  C: { lat: 49.2260, lon: -123.0236 }
+};
+
+// ---- Weather cache ----
+var _weatherCache = { at: 0, data: null };
+function nowSec() { return Math.floor(Date.now() / 1000); }
+
+async function getWeather() {
+  var ttl = 300;
+  if (_weatherCache.data && nowSec() - _weatherCache.at <= ttl) return _weatherCache.data;
+
+  var url = "https://api.openweathermap.org/data/2.5/weather"
+    + "?lat=" + zoneCoords.A.lat
+    + "&lon=" + zoneCoords.A.lon
+    + "&appid=" + process.env.OWM_API_KEY
+    + "&units=metric";
+
+  try {
+    var res = await fetch(url);
+    if (!res.ok) throw new Error("OWM: " + res.status);
+    var j = await res.json();
+    var data = {
+      temp_c: j && j.main ? j.main.temp : null,
+      wind_mps: j && j.wind ? j.wind.speed : null,
+      humidity: j && j.main ? j.main.humidity : null
+    };
+    _weatherCache = { at: nowSec(), data: data };
+    return data;
+  } catch (e) {
+    console.error("Weather fetch failed:", e.message);
+    return { temp_c: null, wind_mps: null, humidity: null };
+  }
+}
+
+var _trafficCache = {};
+function tKey(zoneId) { return "z_" + zoneId; }
+
+async function getTrafficForZone(zoneId) {
+  var k = tKey(zoneId);
+  var hit = _trafficCache[k];
+  if (hit && nowSec() - hit.at <= 60) return hit.data;
+
+  var c = zoneCoords[zoneId] || zoneCoords.A;
+  var url = "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json"
+    + "?point=" + c.lat + "%2C" + c.lon + "&unit=KMPH&key=" + process.env.TRAFFIC_API_KEY;
+
+  try {
+    var res = await fetch(url);
+    if (!res.ok) throw new Error("TomTom: " + res.status);
+    var j = await res.json();
+    var speed = j && j.flowSegmentData ? j.flowSegmentData.currentSpeed : null;
+    var free = j && j.flowSegmentData ? j.flowSegmentData.freeFlowSpeed : null;
+    var congestion = (speed != null && free != null && free > 0)
+      ? Math.max(0, Math.min(100, Math.round((1 - (speed / free)) * 100)))
+      : null;
+    var data = { congestion_pct: congestion, avg_speed_kmh: speed, incidents: 0 };
+    _trafficCache[k] = { at: nowSec(), data: data };
+    return data;
+  } catch (e) {
+    console.error("Traffic fetch failed (" + zoneId + "):", e.message);
+    return { congestion_pct: null, avg_speed_kmh: null, incidents: 0 };
+  }
+}
+
+// ---- Health ----
+app.get("/health", function (req, res) {
   res.status(200).send("OK");
 });
 
-// AI Service prediction call
+// ---- Compute prediction via AI service (single) – kept for backward compatibility ----
 async function computePrediction(zone, pollution) {
   try {
-    const response = await fetch(`${AI_SERVICE_URL}/predict`, {
+    var response = await fetch(AI_SERVICE_URL + "/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ zone, pollution }),
+      body: JSON.stringify({ zone: zone, pollution: pollution })
     });
-
     if (!response.ok) {
-      console.error("AI service error:", await response.text());
+      console.error("AI /predict error:", await response.text());
       return null;
     }
-
-    const data = await response.json();
+    var data = await response.json();
     return data.predicted_traffic;
-  } catch (error) {
-    console.error("Failed to fetch prediction:", error);
+  } catch (e) {
+    console.error("AI /predict failed:", e.message);
     return null;
   }
 }
 
-// Ingest sensor data
-app.post("/ingest", async (req, res) => {
-  const data = req.body;
-
-  if (
-    typeof data.traffic !== "number" ||
-    typeof data.pollution !== "number" ||
-    !data.zone ||
-    !data.timestamp
-  ) {
-    return res.status(400).send({ error: "Invalid payload" });
+// ---- New: bulk scenario call with enrichment ----
+async function runScenarioBulk(enrichedZones) {
+  try {
+    var response = await fetch(AI_SERVICE_URL + "/scenario-bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ zones: enrichedZones })
+    });
+    if (!response.ok) {
+      console.error("AI /scenario-bulk error:", await response.text());
+      return null;
+    }
+    var data = await response.json();
+    return data;
+  } catch (e) {
+    console.error("AI /scenario-bulk failed:", e.message);
+    return null;
   }
+}
 
-  const timestampMillis = Number(data.timestamp);
-  const timestampDate = isNaN(timestampMillis) ? new Date() : new Date(timestampMillis);
+app.post("/ingest", async function (req, res) {
+  var body = req.body;
+  if (!body || !Array.isArray(body.zones) || typeof body.ts !== "number") {
+    return res.status(400).json({ error: "Invalid payload: { ts:number, zones:[] }" });
+  }
 
   try {
-    await pgPool.query(
-      `INSERT INTO sensor_readings (zone, traffic, pollution, timestamp)
-       VALUES ($1, $2, $3, $4)`,
-      [data.zone, data.traffic, data.pollution, timestampDate.toISOString()]
-    );
-
-    const predicted = await computePrediction(data.zone, data.pollution);
-    const rerouteSuggested = predicted !== null && predicted > DEFAULT_REROUTE_THRESHOLD;
-
-    await prisma.latestState.upsert({
-      where: { zone: data.zone },
-      update: {
-        traffic: data.traffic,
-        pollution: data.pollution,
-        timestamp: timestampDate,
-        predictedTraffic: predicted,
-        rerouteSuggested,
-        updatedAt: new Date(),
-      },
-      create: {
-        zone: data.zone,
-        traffic: data.traffic,
-        pollution: data.pollution,
-        timestamp: timestampDate,
-        predictedTraffic: predicted,
-        rerouteSuggested,
-      },
-    });
-
-    res.status(200).send({ status: "ok" });
+    var timestamp = new Date(body.ts);
+    for (var i = 0; i < body.zones.length; i++) {
+      var z = body.zones[i];
+      if (!z || typeof z.id !== "string" || typeof z.traffic !== "number" || typeof z.pollution !== "number") {
+        continue;
+      }
+      await pgPool.query(
+        "INSERT INTO sensor_readings (zone, traffic, pollution, timestamp) VALUES ($1,$2,$3,$4)",
+        [z.id, z.traffic, z.pollution, timestamp.toISOString()]
+      );
+    }
   } catch (err) {
-    console.error("Ingest error:", err);
-    res.status(500).send({ error: "Server error" });
+    console.error("DB insert error:", err);
   }
+
+  var weather = await getWeather();
+  var enrichedZones = [];
+  for (var j = 0; j < body.zones.length; j++) {
+    var zi = body.zones[j];
+    var trafficApi = await getTrafficForZone(zi.id);
+    enrichedZones.push({
+      id: zi.id,
+      traffic: zi.traffic,
+      pollution: zi.pollution,
+      event: zi.event || null,
+      weather: weather,
+      traffic_api: trafficApi
+    });
+  }
+
+  console.log("Enriched zones sent to AI:", enrichedZones);
+
+
+
+  var ai = await runScenarioBulk(enrichedZones);
+  if (!ai || !Array.isArray(ai.zones)) {
+    return res.status(500).json({ error: "AI analysis failed" });
+  }
+
+  try {
+    for (var k = 0; k < enrichedZones.length; k++) {
+      var zIn = enrichedZones[k];
+      var zOut = ai.zones[k];
+
+      var rule = await prisma.automationRule.findFirst({
+        where: { zone: zIn.id, enabled: true },
+        orderBy: { id: "desc" }
+      });
+      var threshold = (rule && rule.trafficThreshold != null) ? rule.trafficThreshold : 0.8;
+
+      var rerouteSuggested = zOut && typeof zOut.predicted_traffic === "number" ? (zOut.predicted_traffic > threshold) : false;
+
+      await prisma.latestState.upsert({
+        where: { zone: zIn.id },
+        update: {
+          traffic: zIn.traffic,
+          pollution: zIn.pollution,
+          timestamp: new Date(body.ts),
+          predictedTraffic: zOut ? zOut.predicted_traffic : null,
+          rerouteSuggested: rerouteSuggested,
+          updatedAt: new Date()
+        },
+        create: {
+          zone: zIn.id,
+          traffic: zIn.traffic,
+          pollution: zIn.pollution,
+          timestamp: new Date(body.ts),
+          predictedTraffic: zOut ? zOut.predicted_traffic : null,
+          rerouteSuggested: rerouteSuggested
+        }
+      });
+    }
+  } catch (e) {
+    console.error("latestState upsert error:", e);
+
+  }
+
+  res.json({
+    ts: body.ts,
+    zones: ai.zones // [{predicted_traffic, reroute_suggested, analysis}]
+  });
 });
 
-// Fetch latest states
-app.get("/latest", async (req, res) => {
+// ---- Read latest per zone ----
+app.get("/latest", async function (req, res) {
   try {
-    const states = await prisma.latestState.findMany();
-    const result = {};
-    states.forEach((s) => {
+    var states = await prisma.latestState.findMany();
+    var result = {};
+    states.forEach(function (s) {
       result[s.zone] = {
         traffic: s.traffic,
         pollution: s.pollution,
         timestamp: s.timestamp ? s.timestamp.getTime() : null,
         predictedTraffic: s.predictedTraffic,
-        rerouteSuggested: s.rerouteSuggested,
+        rerouteSuggested: s.rerouteSuggested
       };
     });
     res.json(result);
@@ -117,59 +237,55 @@ app.get("/latest", async (req, res) => {
   }
 });
 
-// Automation Rules CRUD
-
-// Get all automation rules
-app.get("/automation-rules", async (req, res) => {
+// ---- Automation rules CRUD (unchanged) ----
+app.get("/automation-rules", async function (req, res) {
   try {
-    const rules = await prisma.automationRule.findMany();
+    var rules = await prisma.automationRule.findMany();
     res.json(rules);
-  } catch (error) {
-    console.error("Failed to fetch automation rules:", error);
+  } catch (e) {
+    console.error("Failed to fetch automation rules:", e);
     res.status(500).json({ error: "Failed to fetch automation rules" });
   }
 });
 
-// Create a new automation rule
-app.post("/automation-rules", async (req, res) => {
-  const { name, zone, trafficThreshold, enabled } = req.body;
+app.post("/automation-rules", async function (req, res) {
+  var body = req.body;
   try {
-    const newRule = await prisma.automationRule.create({
-      data: { name, zone, trafficThreshold, enabled },
+    var newRule = await prisma.automationRule.create({
+      data: { name: body.name, zone: body.zone, trafficThreshold: body.trafficThreshold, enabled: body.enabled }
     });
     res.status(201).json(newRule);
-  } catch (error) {
-    console.error("Failed to create automation rule:", error);
+  } catch (e) {
+    console.error("Failed to create automation rule:", e);
     res.status(500).json({ error: "Failed to create automation rule" });
   }
 });
 
-// Update an existing automation rule
-app.put("/automation-rules/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { name, zone, trafficThreshold, enabled } = req.body;
+app.put("/automation-rules/:id", async function (req, res) {
+  var id = parseInt(req.params.id, 10);
+  var body = req.body;
   try {
-    const updatedRule = await prisma.automationRule.update({
-      where: { id },
-      data: { name, zone, trafficThreshold, enabled },
+    var updated = await prisma.automationRule.update({
+      where: { id: id },
+      data: { name: body.name, zone: body.zone, trafficThreshold: body.trafficThreshold, enabled: body.enabled }
     });
-    res.json(updatedRule);
-  } catch (error) {
-    console.error("Failed to update automation rule:", error);
+    res.json(updated);
+  } catch (e) {
+    console.error("Failed to update automation rule:", e);
     res.status(500).json({ error: "Failed to update automation rule" });
   }
 });
 
-// Delete an automation rule
-app.delete("/automation-rules/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+app.delete("/automation-rules/:id", async function (req, res) {
+  var id = parseInt(req.params.id, 10);
   try {
-    await prisma.automationRule.delete({ where: { id } });
+    await prisma.automationRule.delete({ where: { id: id } });
     res.status(204).send();
-  } catch (error) {
-    console.error("Failed to delete automation rule:", error);
+  } catch (e) {
+    console.error("Failed to delete automation rule:", e);
     res.status(500).json({ error: "Failed to delete automation rule" });
   }
 });
+
 
 module.exports = app;
