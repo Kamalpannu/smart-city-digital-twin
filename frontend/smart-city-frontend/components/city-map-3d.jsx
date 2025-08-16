@@ -7,51 +7,45 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useRealTimeData } from "@/contexts/real-time-data-context"
 
-interface ZoneData {
-  id: string
-  name: string
-  traffic: number
-  pollution: number
-  reroute: "none" | "consider" | "now"
-  position: [number, number, number]
-}
-
-interface CityMap3DProps {
-  trafficData?: any
-  onZoneClick?: (zone: ZoneData) => void
-}
-
 // WebGL support detection
-function isWebGLSupported(): boolean {
+function isWebGLSupported() {
   try {
     const canvas = document.createElement("canvas")
-    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
+    const gl =
+      canvas.getContext("webgl2") ||
+      canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl")
     return !!gl
   } catch (e) {
     return false
   }
 }
 
-export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap3DProps) {
+export function CityMap3D({ trafficData: propTrafficData, onZoneClick }) {
   const { trafficData: realTimeTrafficData } = useRealTimeData()
-  const mountRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<THREE.Scene>()
-  const rendererRef = useRef<THREE.WebGLRenderer>()
-  const cameraRef = useRef<THREE.PerspectiveCamera>()
-  const [selectedZone, setSelectedZone] = useState<ZoneData | null>(null)
-  const [webglError, setWebglError] = useState<string | null>(null)
+  const mountRef = useRef(null)
+  const sceneRef = useRef()
+  const rendererRef = useRef()
+  const cameraRef = useRef()
+  const [selectedZone, setSelectedZone] = useState(null)
+  const [webglError, setWebglError] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const currentTrafficData = propTrafficData || realTimeTrafficData
 
-  const zones: ZoneData[] = currentTrafficData
+  const zones = currentTrafficData
     ? Object.entries(currentTrafficData.zones).map(([zoneName, data], index) => ({
         id: zoneName.split(" ")[1] || zoneName,
         name: zoneName,
         traffic: data.traffic,
         pollution: data.pollution,
         reroute: data.reroute,
-        position: index === 0 ? [-2, 0, 0] : index === 1 ? [2, 0, 0] : ([0, 0, 2] as [number, number, number]),
+        position:
+          index === 0
+            ? [-2, 0, 0]
+            : index === 1
+            ? [2, 0, 0]
+            : [0, 0, 2],
       }))
     : [
         { id: "A", name: "Zone A", traffic: 85, pollution: 60, reroute: "consider", position: [-2, 0, 0] },
@@ -64,7 +58,6 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
 
     console.log("[v0] Initializing 3D city map...")
 
-    // Check WebGL support first
     if (!isWebGLSupported()) {
       console.log("[v0] WebGL not supported")
       setWebglError("WebGL is not supported in your browser. Please use a modern browser with WebGL support.")
@@ -87,7 +80,7 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
       cameraRef.current = camera
 
       // Renderer setup with fallback options
-      let renderer: THREE.WebGLRenderer
+      let renderer
       try {
         console.log("[v0] Attempting to create WebGL2 renderer...")
         renderer = new THREE.WebGLRenderer({
@@ -152,22 +145,19 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
       const roadGeometry = new THREE.PlaneGeometry(0.5, 8)
       const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 })
 
-      // Main road (horizontal)
       const mainRoad = new THREE.Mesh(roadGeometry, roadMaterial)
       mainRoad.rotation.x = -Math.PI / 2
       mainRoad.rotation.z = Math.PI / 2
       mainRoad.position.y = 0.01
       scene.add(mainRoad)
 
-      // Cross road (vertical)
       const crossRoad = new THREE.Mesh(roadGeometry, roadMaterial)
       crossRoad.rotation.x = -Math.PI / 2
       crossRoad.position.y = 0.01
       scene.add(crossRoad)
 
-      // Create zones with buildings and pollution overlays
-      zones.forEach((zone, index) => {
-        // Building
+      // Create zones
+      zones.forEach((zone) => {
         const buildingGeometry = new THREE.BoxGeometry(1, 1 + Math.random(), 1)
         const buildingMaterial = new THREE.MeshLambertMaterial({
           color: zone.id === "A" ? 0x4a90e2 : zone.id === "B" ? 0xe74c3c : 0x2ecc71,
@@ -179,7 +169,6 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
         building.userData = { zone }
         scene.add(building)
 
-        // Pollution overlay (semi-transparent fog)
         const pollutionGeometry = new THREE.SphereGeometry(1.5, 16, 16)
         const pollutionMaterial = new THREE.MeshBasicMaterial({
           color: zone.pollution > 70 ? 0xff4444 : zone.pollution > 40 ? 0xffaa44 : 0x44ff44,
@@ -191,7 +180,6 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
         pollutionSphere.position.y = 1
         scene.add(pollutionSphere)
 
-        // Traffic vehicles (animated cubes)
         const vehicleCount = Math.floor(zone.traffic / 20)
         for (let i = 0; i < vehicleCount; i++) {
           const vehicleGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.2)
@@ -200,17 +188,16 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
           vehicle.position.set(
             zone.position[0] + (Math.random() - 0.5) * 2,
             0.05,
-            zone.position[2] + (Math.random() - 0.5) * 2,
+            zone.position[2] + (Math.random() - 0.5) * 2
           )
           scene.add(vehicle)
         }
       })
 
-      // Mouse interaction
       const raycaster = new THREE.Raycaster()
       const mouse = new THREE.Vector2()
 
-      const onMouseClick = (event: MouseEvent) => {
+      const onMouseClick = (event) => {
         const rect = renderer.domElement.getBoundingClientRect()
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -230,7 +217,6 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
 
       renderer.domElement.addEventListener("click", onMouseClick)
 
-      // Animation loop
       const animate = () => {
         requestAnimationFrame(animate)
         renderer.render(scene, camera)
@@ -242,7 +228,7 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
     } catch (error) {
       console.log("[v0] Error initializing 3D map:", error)
       setWebglError(
-        `Failed to initialize 3D visualization: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Failed to initialize 3D visualization: ${error instanceof Error ? error.message : "Unknown error"}`
       )
       setIsLoading(false)
     }
@@ -255,7 +241,7 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
     }
   }, [zones, onZoneClick])
 
-  const getRerouteColor = (reroute: string) => {
+  const getRerouteColor = (reroute) => {
     switch (reroute) {
       case "now":
         return "bg-destructive text-destructive-foreground"
@@ -272,8 +258,6 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
         <Alert className="mb-4">
           <AlertDescription>{webglError}</AlertDescription>
         </Alert>
-
-        {/* Fallback 2D visualization */}
         <Card className="p-6 bg-card border border-border rounded-lg">
           <h3 className="font-serif font-semibold mb-4 text-card-foreground">City Zones Overview</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -289,7 +273,11 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-medium text-card-foreground">Zone {zone.id}</h4>
                   <Badge className={getRerouteColor(zone.reroute)}>
-                    {zone.reroute === "now" ? "Reroute Now" : zone.reroute === "consider" ? "Consider" : "Normal"}
+                    {zone.reroute === "now"
+                      ? "Reroute Now"
+                      : zone.reroute === "consider"
+                      ? "Consider"
+                      : "Normal"}
                   </Badge>
                 </div>
                 <div className="space-y-1 text-sm">
@@ -336,8 +324,8 @@ export function CityMap3D({ trafficData: propTrafficData, onZoneClick }: CityMap
                 {selectedZone.reroute === "now"
                   ? "Reroute Now"
                   : selectedZone.reroute === "consider"
-                    ? "Consider Reroute"
-                    : "No Reroute"}
+                  ? "Consider Reroute"
+                  : "No Reroute"}
               </Badge>
             </div>
             <div className="text-sm text-muted-foreground">

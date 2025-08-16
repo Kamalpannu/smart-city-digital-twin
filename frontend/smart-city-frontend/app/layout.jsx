@@ -11,12 +11,6 @@ const manrope = Manrope({
   variable: "--font-manrope",
 })
 
-export const metadata = {
-  title: "Smart City Simulation Dashboard",
-  description: "Urban planning and city management simulation platform",
-  generator: "v0.app",
-}
-
 export default function RootLayout({
   children,
 }) {

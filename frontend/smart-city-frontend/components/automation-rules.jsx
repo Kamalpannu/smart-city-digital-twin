@@ -20,22 +20,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Edit, Trash2, Power, PowerOff } from "lucide-react"
 
-interface AutomationRule {
-  id: string
-  name: string
-  zone: string
-  condition: string
-  conditionValue: number
-  action: string
-  enabled: boolean
-  priority: "low" | "medium" | "high"
-  description: string
-  createdAt: string
-  lastTriggered?: string
-}
-
 // Mock data for automation rules
-const mockRules: AutomationRule[] = [
+const mockRules = [
   {
     id: "1",
     name: "High Traffic Reroute",
@@ -89,16 +75,16 @@ const mockRules: AutomationRule[] = [
 ]
 
 export function AutomationRules() {
-  const [rules, setRules] = useState<AutomationRule[]>(mockRules)
+  const [rules, setRules] = useState(mockRules)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingRule, setEditingRule] = useState<AutomationRule | null>(null)
+  const [editingRule, setEditingRule] = useState(null)
   const [formData, setFormData] = useState({
     name: "",
     zone: "",
     condition: "",
     conditionValue: 0,
     action: "",
-    priority: "medium" as const,
+    priority: "medium",
     description: "",
   })
 
@@ -120,7 +106,7 @@ export function AutomationRules() {
     setIsDialogOpen(true)
   }
 
-  const handleEdit = (rule: AutomationRule) => {
+  const handleEdit = (rule) => {
     setEditingRule(rule)
     setFormData({
       name: rule.name,
@@ -140,16 +126,13 @@ export function AutomationRules() {
       setRules(
         rules.map((rule) =>
           rule.id === editingRule.id
-            ? {
-                ...rule,
-                ...formData,
-              }
-            : rule,
-        ),
+            ? { ...rule, ...formData }
+            : rule
+        )
       )
     } else {
       // Create new rule
-      const newRule: AutomationRule = {
+      const newRule = {
         id: Date.now().toString(),
         ...formData,
         enabled: true,
@@ -161,15 +144,15 @@ export function AutomationRules() {
     resetForm()
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id) => {
     setRules(rules.filter((rule) => rule.id !== id))
   }
 
-  const handleToggleEnabled = (id: string) => {
+  const handleToggleEnabled = (id) => {
     setRules(rules.map((rule) => (rule.id === id ? { ...rule, enabled: !rule.enabled } : rule)))
   }
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority) => {
     switch (priority) {
       case "high":
         return "bg-destructive text-destructive-foreground"
@@ -180,7 +163,7 @@ export function AutomationRules() {
     }
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -217,9 +200,7 @@ export function AutomationRules() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="font-serif">
-                    Rule Name
-                  </Label>
+                  <Label htmlFor="name" className="font-serif">Rule Name</Label>
                   <Input
                     id="name"
                     value={formData.name}
@@ -228,9 +209,7 @@ export function AutomationRules() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="zone" className="font-serif">
-                    Zone
-                  </Label>
+                  <Label htmlFor="zone" className="font-serif">Zone</Label>
                   <Select value={formData.zone} onValueChange={(value) => setFormData({ ...formData, zone: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select zone" />
@@ -244,15 +223,11 @@ export function AutomationRules() {
                   </Select>
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="condition" className="font-serif">
-                    Condition
-                  </Label>
-                  <Select
-                    value={formData.condition}
-                    onValueChange={(value) => setFormData({ ...formData, condition: value })}
-                  >
+                  <Label htmlFor="condition" className="font-serif">Condition</Label>
+                  <Select value={formData.condition} onValueChange={(value) => setFormData({ ...formData, condition: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
@@ -268,9 +243,7 @@ export function AutomationRules() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="conditionValue" className="font-serif">
-                    Threshold Value
-                  </Label>
+                  <Label htmlFor="conditionValue" className="font-serif">Threshold Value</Label>
                   <Input
                     id="conditionValue"
                     type="number"
@@ -280,15 +253,11 @@ export function AutomationRules() {
                   />
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="action" className="font-serif">
-                    Action
-                  </Label>
-                  <Select
-                    value={formData.action}
-                    onValueChange={(value) => setFormData({ ...formData, action: value })}
-                  >
+                  <Label htmlFor="action" className="font-serif">Action</Label>
+                  <Select value={formData.action} onValueChange={(value) => setFormData({ ...formData, action: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select action" />
                     </SelectTrigger>
@@ -304,13 +273,8 @@ export function AutomationRules() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="priority" className="font-serif">
-                    Priority
-                  </Label>
-                  <Select
-                    value={formData.priority}
-                    onValueChange={(value) => setFormData({ ...formData, priority: value as any })}
-                  >
+                  <Label htmlFor="priority" className="font-serif">Priority</Label>
+                  <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
@@ -322,10 +286,9 @@ export function AutomationRules() {
                   </Select>
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="description" className="font-serif">
-                  Description
-                </Label>
+                <Label htmlFor="description" className="font-serif">Description</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
@@ -336,9 +299,7 @@ export function AutomationRules() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="font-serif">
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="font-serif">Cancel</Button>
               <Button onClick={handleSave} className="font-serif">
                 {editingRule ? "Update Rule" : "Create Rule"}
               </Button>
@@ -397,12 +358,7 @@ export function AutomationRules() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleEnabled(rule.id)}
-                        className="h-8 w-8 p-0"
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleToggleEnabled(rule.id)} className="h-8 w-8 p-0">
                         {rule.enabled ? (
                           <PowerOff className="h-4 w-4 text-muted-foreground" />
                         ) : (

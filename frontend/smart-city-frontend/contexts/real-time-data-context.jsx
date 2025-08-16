@@ -1,19 +1,9 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useEffect, useState, useCallback } from "react"
-import { api, type WeatherData, type TrafficData } from "@/lib/api"
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { api } from "@/lib/api"
 
-interface RealTimeDataContextType {
-  weatherData: WeatherData | null
-  trafficData: TrafficData | null
-  isConnected: boolean
-  lastUpdate: Date | null
-  error: string | null
-  refreshData: () => Promise<void>
-}
-
-const RealTimeDataContext = createContext<RealTimeDataContextType | undefined>(undefined)
+const RealTimeDataContext = createContext(undefined)
 
 export function useRealTimeData() {
   const context = useContext(RealTimeDataContext)
@@ -23,26 +13,21 @@ export function useRealTimeData() {
   return context
 }
 
-interface RealTimeDataProviderProps {
-  children: React.ReactNode
-  updateInterval?: number // in milliseconds
-}
-
-export function RealTimeDataProvider({
-  children,
-  updateInterval = 5000, // 5 seconds default
-}: RealTimeDataProviderProps) {
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
-  const [trafficData, setTrafficData] = useState<TrafficData | null>(null)
+export function RealTimeDataProvider({ children, updateInterval = 5000 }) {
+  const [weatherData, setWeatherData] = useState(null)
+  const [trafficData, setTrafficData] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const [error, setError] = useState(null)
 
   const fetchData = useCallback(async () => {
     try {
       console.log("[v0] Fetching real-time data...")
 
-      const [weather, traffic] = await Promise.all([api.getLatestWeather(), api.getLatestTraffic()])
+      const [weather, traffic] = await Promise.all([
+        api.getLatestWeather(),
+        api.getLatestTraffic(),
+      ])
 
       setWeatherData(weather)
       setTrafficData(traffic)
@@ -90,7 +75,7 @@ export function RealTimeDataProvider({
     }
   }, [fetchData])
 
-  const value: RealTimeDataContextType = {
+  const value = {
     weatherData,
     trafficData,
     isConnected,
@@ -99,5 +84,9 @@ export function RealTimeDataProvider({
     refreshData,
   }
 
-  return <RealTimeDataContext.Provider value={value}>{children}</RealTimeDataContext.Provider>
+  return (
+    <RealTimeDataContext.Provider value={value}>
+      {children}
+    </RealTimeDataContext.Provider>
+  )
 }

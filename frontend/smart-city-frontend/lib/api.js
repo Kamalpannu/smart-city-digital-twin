@@ -1,61 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-export interface WeatherData {
-  temperature: number
-  humidity: number
-  windSpeed: number
-  pollution: number
-  pressure: number
-  timestamp: string
-}
-
-export interface TrafficData {
-  zones: {
-    [key: string]: {
-      traffic: number
-      pollution: number
-      reroute: "none" | "consider" | "now"
-    }
-  }
-  timestamp: string
-}
-
-export interface AutomationRule {
-  id: string
-  name: string
-  zone: string
-  condition: string
-  conditionValue: number
-  action: string
-  enabled: boolean
-  priority: "low" | "medium" | "high"
-  description: string
-  createdAt: string
-  lastTriggered?: string
-}
-
-export interface ScenarioRequest {
-  ts: string
-  zones: Array<{
-    id: string
-    traffic: number
-    pollution: number
-    event: string
-  }>
-}
-
-export interface ScenarioPrediction {
-  predicted_traffic: {
-    [key: string]: number
-  }
-  reroute_suggested: {
-    [key: string]: boolean
-  }
-  analysis: string
-}
-
 class SmartCityAPI {
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  async request(endpoint, options) {
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: {
@@ -73,11 +19,11 @@ class SmartCityAPI {
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error)
       // Return mock data for development
-      return this.getMockData(endpoint) as T
+      return this.getMockData(endpoint)
     }
   }
 
-  private getMockData(endpoint: string): any {
+  getMockData(endpoint) {
     const now = new Date().toISOString()
 
     switch (endpoint) {
@@ -118,40 +64,40 @@ class SmartCityAPI {
     }
   }
 
-  async getLatestWeather(): Promise<WeatherData> {
-    return this.request<WeatherData>("/weather/latest")
+  async getLatestWeather() {
+    return this.request("/weather/latest")
   }
 
-  async getLatestTraffic(): Promise<TrafficData> {
-    return this.request<TrafficData>("/traffic/latest")
+  async getLatestTraffic() {
+    return this.request("/traffic/latest")
   }
 
-  async getAutomationRules(): Promise<AutomationRule[]> {
-    return this.request<AutomationRule[]>("/automation-rules")
+  async getAutomationRules() {
+    return this.request("/automation-rules")
   }
 
-  async createAutomationRule(rule: Omit<AutomationRule, "id" | "createdAt">): Promise<AutomationRule> {
-    return this.request<AutomationRule>("/automation-rules", {
+  async createAutomationRule(rule) {
+    return this.request("/automation-rules", {
       method: "POST",
       body: JSON.stringify(rule),
     })
   }
 
-  async updateAutomationRule(id: string, rule: Partial<AutomationRule>): Promise<AutomationRule> {
-    return this.request<AutomationRule>(`/automation-rules/${id}`, {
+  async updateAutomationRule(id, rule) {
+    return this.request(`/automation-rules/${id}`, {
       method: "PUT",
       body: JSON.stringify(rule),
     })
   }
 
-  async deleteAutomationRule(id: string): Promise<void> {
-    return this.request<void>(`/automation-rules/${id}`, {
+  async deleteAutomationRule(id) {
+    return this.request(`/automation-rules/${id}`, {
       method: "DELETE",
     })
   }
 
-  async runScenario(scenario: ScenarioRequest): Promise<ScenarioPrediction> {
-    return this.request<ScenarioPrediction>("/scenario-bulk", {
+  async runScenario(scenario) {
+    return this.request("/scenario-bulk", {
       method: "POST",
       body: JSON.stringify(scenario),
     })
