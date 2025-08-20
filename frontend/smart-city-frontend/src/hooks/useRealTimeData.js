@@ -3,20 +3,15 @@ import { api } from '../services/api';
 import { POLLING_INTERVAL } from '../utils/constants';
 
 export const useRealTimeData = () => {
-  const [weatherData, setWeatherData] = useState(null);
-  const [trafficData, setTrafficData] = useState(null);
+  const [latestData, setLatestData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [weather, traffic] = await Promise.all([
-        api.getWeatherLatest().catch(() => null),
-        api.getTrafficLatest().catch(() => null)
-      ]);
-      if (weather) setWeatherData(weather);
-      if (traffic) setTrafficData(traffic);
+      const data = await api.getLatest();
+      setLatestData(data);
       setLoading(false);
     } catch (err) {
       console.error('Failed to fetch real-time data:', err);
@@ -31,5 +26,5 @@ export const useRealTimeData = () => {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  return { weatherData, trafficData, loading, error, refetch: fetchData };
+  return { latestData, loading, error, refetch: fetchData };
 };

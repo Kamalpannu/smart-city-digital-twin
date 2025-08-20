@@ -237,6 +237,18 @@ app.get("/latest", async function (req, res) {
   }
 });
 
+app.get("/weather-widget", async (req, res) => {
+  const weather = await getWeather();
+  res.json({
+    temperature: weather.temp_c,
+    humidity: weather.humidity,
+    windSpeed: weather.wind_mps,
+    condition: "N/A",
+    pollution: 0 
+  });
+});
+
+
 // ---- Automation rules CRUD (unchanged) ----
 app.get("/automation-rules", async function (req, res) {
   try {

@@ -4,51 +4,18 @@ import AutomationView from './views/AutomationView';
 import ScenarioView from './views/ScenarioView';
 import { BarChart3, Zap, Play } from 'lucide-react';
 
-// Mock API functions (replace with actual backend calls)
-const API_BASE = 'http://localhost:3001';
-
-const api = {
-  getWeather: async () => ({
-    temperature: 22 + Math.random() * 10,
-    humidity: 60 + Math.random() * 30,
-    windSpeed: 5 + Math.random() * 15,
-    pollution: Math.random() * 100,
-    condition: 'Clear'
-  }),
-  
-  getTraffic: async () => ({
-    zones: [
-      { id: 'A', traffic: 30 + Math.random() * 70, pollution: 20 + Math.random() * 60 },
-      { id: 'B', traffic: 40 + Math.random() * 60, pollution: 30 + Math.random() * 50 },
-      { id: 'C', traffic: 25 + Math.random() * 75, pollution: 15 + Math.random() * 70 }
-    ]
-  }),
-  
-  getAutomationRules: async () => [
-    { id: 1, zone: 'A', condition: 'traffic > 80', action: 'reroute_traffic', enabled: true },
-    { id: 2, zone: 'B', condition: 'pollution > 70', action: 'alert_authorities', enabled: true },
-    { id: 3, zone: 'C', condition: 'traffic > 60', action: 'increase_signal_time', enabled: false }
-  ],
-  
-  createRule: async (rule) => ({ id: Date.now(), ...rule }),
-  updateRule: async (id, rule) => ({ id, ...rule }),
-  deleteRule: async (id) => ({ success: true }),
-  
-  testScenario: async (scenario) => ({
-    predicted_traffic: scenario.zones.map(z => ({ 
-      ...z, 
-      predicted_traffic: z.traffic * (1 + Math.random() * 0.5) 
-    })),
-    reroute_suggested: Math.random() > 0.5,
-    analysis: `Scenario "${scenario.event}" in zone ${scenario.zones[0]?.id} may increase traffic by ${Math.round(Math.random() * 50)}%`
-  })
-};
+const API_BASE = 'http://localhost:4000'; // Update port if needed
 
 const App = () => {
   const [currentView, setCurrentView] = useState('dashboard');
-  
-  // Safe default values
-  const [weatherData, setWeatherData] = useState({ temperature: 0, humidity: 0, windSpeed: 0, pollution: 0, condition: 'N/A' });
+
+  const [weatherData, setWeatherData] = useState({ 
+    temperature: 0, 
+    humidity: 0, 
+    windSpeed: 0, 
+    pollution: 0, 
+    condition: 'N/A' 
+  });
   const [trafficData, setTrafficData] = useState({ zones: [] });
   const [automationRules, setAutomationRules] = useState([]);
   const [selectedZone, setSelectedZone] = useState(null);
@@ -59,36 +26,51 @@ const App = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [weather, traffic, rules] = await Promise.all([
-          api.getWeather(),
-          api.getTraffic(),
-          api.getAutomationRules()
-        ]);
+        // Weather
+        const weatherRes = await fetch(`${API_BASE}/weather-widget`);
+        const weather = await weatherRes.json();
+        setWeatherData({
+          temperature: weather.temperature || 0,
+          humidity: weather.humidity || 0,
+          windSpeed: weather.windSpeed || 0,
+          pollution: weather.pollution || 0,
+          condition: weather.condition || 'N/A'
+        });
 
-        setWeatherData(weather || { temperature: 0, humidity: 0, windSpeed: 0, pollution: 0, condition: 'N/A' });
-        setTrafficData(traffic || { zones: [] });
-        setAutomationRules(rules || []);
+        // Latest traffic & pollution
+        const trafficRes = await fetch(`${API_BASE}/latest`);
+        const latest = await trafficRes.json();
+        const zones = ['A', 'B', 'C'].map(z => ({
+          id: z,
+          traffic: latest[z]?.traffic ?? 0,
+          pollution: latest[z]?.pollution ?? 0
+        }));
+        setTrafficData({ zones });
 
-        if (traffic?.zones && traffic.zones.length) {
+        // Automation rules
+        const rulesRes = await fetch(`${API_BASE}/automation-rules`);
+        const rules = await rulesRes.json();
+        setAutomationRules(rules);
+
+        // Update chart & pollution data
+        if (zones.length) {
           const timestamp = new Date().toLocaleTimeString();
-
           setChartData(prev => [
             ...prev.slice(-9),
             {
               time: timestamp,
-              zoneA: traffic.zones[0]?.traffic ?? 0,
-              zoneB: traffic.zones[1]?.traffic ?? 0,
-              zoneC: traffic.zones[2]?.traffic ?? 0,
+              zoneA: zones[0]?.traffic ?? 0,
+              zoneB: zones[1]?.traffic ?? 0,
+              zoneC: zones[2]?.traffic ?? 0
             }
           ]);
-
           setPollutionData(prev => [
             ...prev.slice(-9),
             {
               time: timestamp,
-              zoneA: traffic.zones[0]?.pollution ?? 0,
-              zoneB: traffic.zones[1]?.pollution ?? 0,
-              zoneC: traffic.zones[2]?.pollution ?? 0,
+              zoneA: zones[0]?.pollution ?? 0,
+              zoneB: zones[1]?.pollution ?? 0,
+              zoneC: zones[2]?.pollution ?? 0
             }
           ]);
         }
@@ -103,10 +85,14 @@ const App = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Automation rules handlers
   const handleCreateRule = async (ruleData) => {
     try {
-      const newRule = await api.createRule(ruleData);
+      const res = await fetch(`${API_BASE}/automation-rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ruleData)
+      });
+      const newRule = await res.json();
       setAutomationRules(prev => [...prev, newRule]);
     } catch (error) {
       console.error('Failed to create rule:', error);
@@ -115,7 +101,12 @@ const App = () => {
 
   const handleUpdateRule = async (id, ruleData) => {
     try {
-      const updatedRule = await api.updateRule(id, ruleData);
+      const res = await fetch(`${API_BASE}/automation-rules/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ruleData)
+      });
+      const updatedRule = await res.json();
       setAutomationRules(prev => prev.map(rule => rule.id === id ? updatedRule : rule));
     } catch (error) {
       console.error('Failed to update rule:', error);
@@ -124,7 +115,7 @@ const App = () => {
 
   const handleDeleteRule = async (id) => {
     try {
-      await api.deleteRule(id);
+      await fetch(`${API_BASE}/automation-rules/${id}`, { method: 'DELETE' });
       setAutomationRules(prev => prev.filter(rule => rule.id !== id));
     } catch (error) {
       console.error('Failed to delete rule:', error);
@@ -134,7 +125,13 @@ const App = () => {
   // Scenario test handler
   const handleScenarioTest = async (scenarioData) => {
     try {
-      return await api.testScenario(scenarioData);
+      const res = await fetch(`${API_BASE}/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scenarioData)
+      });
+      const result = await res.json();
+      return result;
     } catch (error) {
       console.error('Scenario test failed:', error);
       throw error;
@@ -156,7 +153,6 @@ const App = () => {
             setSelectedZone={setSelectedZone}
           />
         );
-
       case 'automation':
         return (
           <AutomationView
@@ -166,10 +162,8 @@ const App = () => {
             onDeleteRule={handleDeleteRule}
           />
         );
-
       case 'scenario':
         return <ScenarioView onTestScenario={handleScenarioTest} />;
-
       default:
         return <div>View not found</div>;
     }
