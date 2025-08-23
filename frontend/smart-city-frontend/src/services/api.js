@@ -34,6 +34,12 @@ class ApiService {
       body: JSON.stringify(data),
     });
   }
+  async runScenario(data) {
+  return this.request('/scenario', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
   async getAutomationRules() {
     return this.request('/automation-rules');
   }

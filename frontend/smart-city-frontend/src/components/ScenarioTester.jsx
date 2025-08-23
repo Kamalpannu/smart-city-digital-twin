@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Play, AlertTriangle } from 'lucide-react';
+import { api } from '../services/api'; // import your ApiService
 
-const ScenarioTester = ({ onTestScenario }) => {
+const ScenarioTester = () => {
   const [scenario, setScenario] = useState({
     zone: 'A',
     event: 'road_closure',
@@ -10,29 +11,28 @@ const ScenarioTester = ({ onTestScenario }) => {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-    const testData = {
-      ts: Date.now(),
-      zones: [{
-        id: scenario.zone,
-        traffic: 50,
-        pollution: 30,
-        event: scenario.event
-      }]
-    };
-
-    try {
-      const response = await onTestScenario(testData);
-      setResult(response);
-    } catch (error) {
-      console.error('Scenario test failed:', error);
-    } finally {
-      setLoading(false);
-    }
+  const testData = {
+    zone: scenario.zone,
+    traffic: 50,
+    pollution: 30,
+    event: scenario.event
   };
+
+  try {
+    const response = await api.runScenario(testData);
+    setResult({ zones: [response.zone] });
+  } catch (error) {
+    console.error("Scenario test failed:", error);
+    setResult(null);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="bg-white rounded-lg p-6 shadow-lg">
@@ -102,7 +102,7 @@ const ScenarioTester = ({ onTestScenario }) => {
         </button>
       </form>
 
-      {result && (
+      {result && result.zones && (
         <div className="mt-6 p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50">
           <h3 className="font-semibold mb-3 flex items-center">
             <AlertTriangle className="w-5 h-5 mr-2" />
@@ -110,31 +110,26 @@ const ScenarioTester = ({ onTestScenario }) => {
           </h3>
 
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Reroute Suggested:</span>
-              <span className={`font-medium ${result.reroute_suggested ? 'text-red-600' : 'text-green-600'}`}>
-                {result.reroute_suggested ? 'Yes' : 'No'}
-              </span>
-            </div>
+            {result.zones.map((zone, idx) => (
+              <div key={idx} className="p-3 border rounded-lg bg-white">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-600">Zone {zone.id} - Reroute Suggested:</span>
+                  <span className={`font-medium ${zone.rerouteSuggested ? 'text-red-600' : 'text-green-600'}`}>
+                    {zone.rerouteSuggested ? 'Yes' : 'No'}
+                  </span>
+                </div>
 
-            <div>
-              <span className="text-gray-600 block mb-2">Analysis:</span>
-              <p className="text-sm bg-white p-3 rounded border">{result.analysis}</p>
-            </div>
+                <div className="mb-2">
+                  <span className="text-gray-600 block mb-1">Analysis:</span>
+                  <p className="text-sm bg-gray-50 p-2 rounded border">{zone.analysis}</p>
+                </div>
 
-            {result.predicted_traffic && (
-              <div>
-                <span className="text-gray-600 block mb-2">Predicted Traffic Impact:</span>
-                <div className="space-y-1">
-                  {result.predicted_traffic.map((zone, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span>Zone {zone.id}:</span>
-                      <span className="font-medium">{Math.round(zone.predicted_traffic)}%</span>
-                    </div>
-                  ))}
+                <div>
+                  <span className="text-gray-600 block mb-1">Predicted Traffic Impact:</span>
+                  <span className="font-medium">{Math.round(zone.predictedTraffic)}%</span>
                 </div>
               </div>
-            )}
+            ))}
           </div>
         </div>
       )}

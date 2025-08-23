@@ -33,6 +33,7 @@ class PredictionResponse(BaseModel):
 class ScenarioRequest(BaseModel):
     zone: str
     pollution: float
+    traffic: Optional[float] = None
     closure_event: bool = False
 
 class ScenarioResponse(BaseModel):
@@ -93,6 +94,7 @@ async def scenario(data: ScenarioRequest):
     Given:
     - Zone: {zone}
     - Pollution level: {pollution}
+    - Traffic reported: {traffic}
     - Road closure event: {closure_event}
     - Predicted traffic load: {predicted_traffic}%
 
@@ -102,6 +104,7 @@ async def scenario(data: ScenarioRequest):
     ai_response = chain.invoke({
         "zone": data.zone,
         "pollution": data.pollution,
+        "traffic": data.traffic,
         "closure_event": data.closure_event,
         "predicted_traffic": prediction * 100
     })
